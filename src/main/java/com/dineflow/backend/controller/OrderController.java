@@ -76,4 +76,24 @@ public class OrderController {
 
         return ResponseEntity.ok("Cập nhật trạng thái thành công!");
     }
+
+
+    @PostMapping("/{orderId}/pay-items")
+    public ResponseEntity<?> payItems(@PathVariable Integer orderId, @RequestBody List<Integer> orderItemIds) {
+        try {
+            orderService.payItems(orderId, orderItemIds);
+            return ResponseEntity.ok("Thanh toán thành công!");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/items/{itemId}/status")
+    public ResponseEntity<?> updateItemStatus(@PathVariable Integer itemId, @RequestParam String status) {
+        try {
+            return ResponseEntity.ok(orderService.updateOrderItemStatus(itemId, status));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

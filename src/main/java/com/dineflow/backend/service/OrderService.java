@@ -3,10 +3,12 @@ package com.dineflow.backend.service;
 import com.dineflow.backend.dto.OrderItemDTO;
 import com.dineflow.backend.dto.OrderRequest;
 import com.dineflow.backend.entity.*;
+import com.dineflow.backend.repository.OrderItemRepository;
 import com.dineflow.backend.repository.OrderRepository;
 import com.dineflow.backend.repository.ProductRepository;
 import com.dineflow.backend.repository.RestaurantTableRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -130,5 +132,57 @@ public class OrderService {
         // [SỬA] Tìm tất cả trạng thái active để hiển thị hóa đơn đúng
         return orderRepository.findByTableAndStatusIn(table, ACTIVE_STATUSES)
                 .orElse(null);
+    }
+
+    @Transactional
+    public void payItems(Integer orderId, List<Integer> orderItemIds) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại"));
+
+        // 1. Duyệt qua các món được chọn để thanh toán
+        boolean allPaid = true;
+        for (OrderItem item : order.getOrderItems()) {
+            // Nếu món này nằm trong danh sách được chọn -> Đánh dấu ĐÃ TRẢ TIỀN
+            if (orderItemIds.contains(item.getId())) {
+                item.setStatus("PAID");
+            }
+
+            // Kiểm tra xem còn món nào chưa trả tiền không?
+            if (!"PAID".equals(item.getStatus())) {
+                allPaid = false;
+            }
+        }
+
+        // 2. Nếu TẤT CẢ món trong đơn đã là PAID -> Đóng bàn, Hoàn tất đơn
+        if (allPaid) {
+            order.setStatus("COMPLETED"); // Đổi thành COMPLETED để hiện trong báo cáo
+            order.getTable().setStatus("EMPTY"); // Trả bàn
+            tableRepository.save(order.getTable());
+        } else {
+            // Nếu chưa trả hết -> Vẫn giữ bàn là OCCUPIED, đơn là UNPAID (hoặc PARTIAL_PAID tùy bạn)
+            order.setStatus("UNPAID");
+        }
+        orderRepository.save(order);
+
+    }
+    @Autowired
+    private OrderItemRepository orderItemRepository; // Nhớ Autowired Repository này
+
+    // [MỚI] Cập nhật trạng thái từng món
+    public OrderItem updateOrderItemStatus(Integer itemId, String status) {
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new RuntimeException("Món ăn không tồn tại"));
+
+        item.setStatus(status);
+
+        // Logic phụ: Nếu tất cả món đã xong (SERVED) -> Update luôn Order thành SERVED (tuỳ chọn)
+        // ...
+
+        OrderItem savedItem = orderItemRepository.save(item);
+
+        // Gửi socket báo cho Bếp/Thu ngân biết là món này đã đổi trạng thái (để UI tự cập nhật)
+        messagingTemplate.convertAndSend("/topic/kitchen", savedItem.getOrder());
+
+        return savedItem;
     }
 }
