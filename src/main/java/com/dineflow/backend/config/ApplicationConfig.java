@@ -30,6 +30,8 @@
             DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
             authProvider.setUserDetailsService(userDetailsService());
             authProvider.setPasswordEncoder(passwordEncoder());
+            // Thêm dòng này để tránh việc Spring giấu lỗi thật sự (như UserNotFound)
+            authProvider.setHideUserNotFoundExceptions(false);
             return authProvider;
         }
 

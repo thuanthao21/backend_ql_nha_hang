@@ -12,6 +12,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -24,20 +25,22 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(auth -> auth
-                        // Cho phép các request OPTIONS (CORS) luôn đi qua
+                        // 1. Cho phép tất cả các request OPTIONS (Fix lỗi CORS Preflight)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Mở rộng phạm vi permitAll để chắc chắn không sót đường dẫn nào
+                        // 2. Mở toang các đường dẫn liên quan đến xác thực và websocket
+                        // Dùng String trực tiếp để Spring tự chọn Matcher phù hợp nhất
                         .requestMatchers("/auth/**", "/api/auth/**", "/ws/**", "/login/**").permitAll()
 
-                        // Phân quyền API
+                        // 3. Phân quyền API chức năng
                         .requestMatchers("/api/orders/**", "/api/tables/**", "/api/products/**",
                                 "/api/categories/**", "/api/reports/**").hasAnyAuthority("ADMIN", "STAFF")
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
 
+                        // 4. Tất cả các request còn lại phải đăng nhập
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -45,5 +48,4 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-    }
-}
+    }}
