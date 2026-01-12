@@ -1,58 +1,48 @@
 package com.dineflow.backend.controller;
 
-import com.dineflow.backend.entity.Order;
-import com.dineflow.backend.repository.OrderRepository;
+import com.dineflow.backend.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/reports")
 @RequiredArgsConstructor
 public class ReportController {
 
-    private final OrderRepository orderRepository;
+    private final ReportService reportService;
 
+    /**
+     * Lấy dữ liệu dashboard theo khoảng ngày tùy chọn
+     * @param from yyyy-MM-dd
+     * @param to   yyyy-MM-dd
+     */
     @GetMapping("/dashboard")
-    public ResponseEntity<?> getDashboardStats() {
-        List<Order> allOrders = orderRepository.findAll();
+    public ResponseEntity<?> getDashboardStats(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to
+    ) {
+        // Nếu không truyền ngày, mặc định 7 ngày gần nhất
+        if (from == null || from.isEmpty() || to == null || to.isEmpty()) {
+            LocalDate today = LocalDate.now();
+            LocalDate sevenDaysAgo = today.minusDays(6);
+            from = sevenDaysAgo.toString();
+            to = today.toString();
+        }
 
-        // 1. Tính tổng doanh thu (chỉ tính đơn đã hoàn thành COMPLETED)
-        BigDecimal totalRevenue = allOrders.stream()
-                .filter(o -> "COMPLETED".equals(o.getStatus()) && o.getTotalAmount() != null)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Optionally: Validate từ ngày không được sau đến ngày
+        if (LocalDate.parse(from).isAfter(LocalDate.parse(to))) {
+            // Hoán đổi tự động
+            String temp = from;
+            from = to;
+            to = temp;
+        }
 
-        // 2. Đếm số đơn hôm nay
-        long todayOrders = allOrders.stream()
-                .filter(o -> o.getCreatedAt() != null && o.getCreatedAt().toLocalDate().equals(LocalDate.now()))
-                .count();
-
-        // 3. Mock data biểu đồ (Giả lập doanh thu 7 ngày để vẽ cho đẹp)
-        // Trong thực tế sẽ dùng SQL Group By
-        Object[] chartData = new Object[]{
-                Map.of("date", "20/11", "value", 1500000),
-                Map.of("date", "21/11", "value", 2300000),
-                Map.of("date", "22/11", "value", 1800000),
-                Map.of("date", "23/11", "value", 3200000),
-                Map.of("date", "24/11", "value", 2100000),
-                Map.of("date", "25/11", "value", 1200000),
-                Map.of("date", "Hôm nay", "value", totalRevenue) // Số thực tế
-        };
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("revenue", totalRevenue);
-        response.put("todayOrders", todayOrders);
-        response.put("chartData", chartData);
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(reportService.getDashboardStats(from, to));
     }
 }
