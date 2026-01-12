@@ -26,28 +26,19 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource)) // Cấu hình CORS
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Cho phép tất cả các request OPTIONS (Frontend hỏi đường)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 2. Các API công khai (Login, WebSocket)
-                        .requestMatchers("/api/auth/**", "/ws/**").permitAll()
+                        // SỬA TẠI ĐÂY: Thêm đường dẫn không có tiền tố /api nếu Frontend gọi trực tiếp
+                        .requestMatchers("/api/auth/**", "/auth/**", "/ws/**").permitAll()
 
-                        // 3. Các API nghiệp vụ (Dành cho cả ADMIN và STAFF)
-                        // Bao gồm: Gọi món, Bếp, Xem bàn, Xem thực đơn
-                        // Dấu ** ở cuối nghĩa là bao gồm tất cả link con (VD: /items/{id}/status)
                         .requestMatchers("/api/orders/**").hasAnyAuthority("ADMIN", "STAFF")
                         .requestMatchers("/api/tables/**").hasAnyAuthority("ADMIN", "STAFF")
                         .requestMatchers("/api/products/**").hasAnyAuthority("ADMIN", "STAFF")
                         .requestMatchers("/api/categories/**").hasAnyAuthority("ADMIN", "STAFF")
                         .requestMatchers("/api/reports/**").hasAnyAuthority("ADMIN", "STAFF")
-
-                        // 4. Các API quản trị (Chỉ ADMIN được dùng)
-                        // Ví dụ: Quản lý nhân viên
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
-
-                        // 5. Tất cả request còn lại phải đăng nhập
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
