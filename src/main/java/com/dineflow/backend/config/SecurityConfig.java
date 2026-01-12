@@ -7,7 +7,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -25,23 +24,33 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable)
+                // 1. Tắt CSRF và cấu hình CORS
+                .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
+
+                // 2. Cấu hình phân quyền
                 .authorizeHttpRequests(auth -> auth
+                        // Cho phép tất cả các request OPTIONS (Preflight request của trình duyệt)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // SỬA TẠI ĐÂY: Thêm đường dẫn không có tiền tố /api nếu Frontend gọi trực tiếp
-                        .requestMatchers("/api/auth/**", "/auth/**", "/ws/**").permitAll()
+                        // Mở công khai các đường dẫn đăng nhập và websocket
+                        // Dùng AntPathRequestMatcher ngầm định để khớp chính xác
+                        .requestMatchers("/auth/**", "/api/auth/**", "/ws/**").permitAll()
 
-                        .requestMatchers("/api/orders/**").hasAnyAuthority("ADMIN", "STAFF")
-                        .requestMatchers("/api/tables/**").hasAnyAuthority("ADMIN", "STAFF")
-                        .requestMatchers("/api/products/**").hasAnyAuthority("ADMIN", "STAFF")
-                        .requestMatchers("/api/categories/**").hasAnyAuthority("ADMIN", "STAFF")
-                        .requestMatchers("/api/reports/**").hasAnyAuthority("ADMIN", "STAFF")
+                        // Phân quyền cho các API chức năng
+                        .requestMatchers("/api/orders/**", "/api/tables/**", "/api/products/**",
+                                "/api/categories/**", "/api/reports/**").hasAnyAuthority("ADMIN", "STAFF")
+
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
+
+                        // Tất cả các yêu cầu khác phải được xác thực
                         .anyRequest().authenticated()
                 )
+
+                // 3. Quản lý Session là Stateless (không lưu session trên server)
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+                // 4. Cấu hình Provider và Filter
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
