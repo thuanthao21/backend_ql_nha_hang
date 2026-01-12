@@ -24,33 +24,23 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Tắt CSRF và cấu hình CORS
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-
-                // 2. Cấu hình phân quyền
                 .authorizeHttpRequests(auth -> auth
-                        // Cho phép tất cả các request OPTIONS (Preflight request của trình duyệt)
+                        // Cho phép các request OPTIONS (CORS) luôn đi qua
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Mở công khai các đường dẫn đăng nhập và websocket
-                        // Dùng AntPathRequestMatcher ngầm định để khớp chính xác
-                        .requestMatchers("/auth/**", "/api/auth/**", "/ws/**").permitAll()
+                        // Mở rộng phạm vi permitAll để chắc chắn không sót đường dẫn nào
+                        .requestMatchers("/auth/**", "/api/auth/**", "/ws/**", "/login/**").permitAll()
 
-                        // Phân quyền cho các API chức năng
+                        // Phân quyền API
                         .requestMatchers("/api/orders/**", "/api/tables/**", "/api/products/**",
                                 "/api/categories/**", "/api/reports/**").hasAnyAuthority("ADMIN", "STAFF")
-
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
 
-                        // Tất cả các yêu cầu khác phải được xác thực
                         .anyRequest().authenticated()
                 )
-
-                // 3. Quản lý Session là Stateless (không lưu session trên server)
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-                // 4. Cấu hình Provider và Filter
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
