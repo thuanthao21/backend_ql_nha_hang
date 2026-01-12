@@ -31,7 +31,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        // 1. Lấy header Authorization
+        // THÊM ĐOẠN NÀY VÀO:
+        String path = request.getServletPath();
+        if (path.contains("/auth") || path.contains("/ws")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 1. Lấy header Authorization (Giữ nguyên các bước cũ của bạn bên dưới)
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final String username;
