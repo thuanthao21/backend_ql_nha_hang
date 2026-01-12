@@ -8,6 +8,7 @@ import com.dineflow.backend.service.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
@@ -22,23 +23,37 @@ public class AuthController {
     private final JwtService jwtService;
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        // 1. Xác thực username/password (Spring Security tự làm)
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getUsername(),
-                        request.getPassword()
-                )
-        );
+    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
+        try {
+            // Log kiểm tra xem request có đến được đây không
+            System.out.println("👉 Đang nhận yêu cầu login cho user: " + request.getUsername());
 
-        // 2. Nếu đúng, tìm user trong DB
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+            // 1. Xác thực username/password
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUsername(),
+                            request.getPassword()
+                    )
+            );
 
-        // 3. Sinh token
-        String token = jwtService.generateToken(user);
+            // 2. Nếu đúng, tìm user trong DB
+            User user = userRepository.findByUsername(request.getUsername())
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        // 4. Trả về token và role
-        return ResponseEntity.ok(new AuthResponse(token, user.getRole().name()));
+            // 3. Sinh token
+            String token = jwtService.generateToken(user);
+            System.out.println("✅ Login thành công. Role: " + user.getRole().name());
+
+            // 4. Trả về token và role
+            return ResponseEntity.ok(new AuthResponse(token, user.getRole().name()));
+
+        } catch (BadCredentialsException e) {
+            System.err.println("❌ Sai mật khẩu hoặc username cho user: " + request.getUsername());
+            return ResponseEntity.status(401).body("Sai tên đăng nhập hoặc mật khẩu");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi hệ thống khi login: " + e.getMessage());
+            e.printStackTrace(); // In chi tiết lỗi ra log
+            return ResponseEntity.badRequest().body("Lỗi đăng nhập: " + e.getMessage());
+        }
     }
 }
