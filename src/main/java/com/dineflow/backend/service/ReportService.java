@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,64 +21,50 @@ public class ReportService {
 
     private final OrderRepository orderRepository;
 
-    /**
-     * Lấy dữ liệu dashboard theo khoảng ngày tùy chọn
-     * @param fromDate yyyy-MM-dd
-     * @param toDate   yyyy-MM-dd
-     */
     public DashboardDTO getDashboardStats(String fromDate, String toDate) {
-
-        // =======================
-        // 1. SỐ LIỆU HÔM NAY (GIỮ NGUYÊN)
-        // =======================
-        Double todayRev = orderRepository.getTodayRevenue();
-        Integer todayOrd = orderRepository.countTodayOrders();
-
-        if (todayRev == null) todayRev = 0.0;
-        if (todayOrd == null) todayOrd = 0;
-
-        // =======================
-        // 2. PARSE NGÀY
-        // =======================
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-        // 00:00:00 ngày bắt đầu
-        LocalDateTime start = LocalDate.parse(fromDate, formatter).atStartOfDay();
+        // 1. XỬ LÝ MÚI GIỜ (QUAN TRỌNG TRÊN HEROKU)
+        // Heroku chạy UTC, ta phải ép về giờ Việt Nam để tính "Hôm nay"
+        ZoneId vnZone = ZoneId.of("Asia/Ho_Chi_Minh");
+        LocalDate todayVN = LocalDate.now(vnZone);
 
-        // 23:59:59 ngày kết thúc
-        LocalDateTime end = LocalDate.parse(toDate, formatter).atTime(23, 59, 59);
+        // Bắt đầu ngày hôm nay: 00:00:00 (Giờ VN)
+        LocalDateTime startToday = todayVN.atStartOfDay();
+        // Kết thúc ngày hôm nay: 23:59:59.9999 (Giờ VN)
+        LocalDateTime endToday = todayVN.atTime(LocalTime.MAX);
 
-        // =======================
-        // 3. LẤY DỮ LIỆU TỪ DB
-        // =======================
-        List<Object[]> rawData = orderRepository.getRevenueByDateRange(start, end);
+        // Gọi Repo với thời gian chính xác
+        Double todayRev = orderRepository.calculateRevenue(startToday, endToday);
+        Integer todayOrd = orderRepository.countOrders(startToday, endToday);
 
+        // 2. XỬ LÝ BIỂU ĐỒ (CHART)
+        // Parse ngày từ request (Front gửi lên yyyy-MM-dd)
+        LocalDateTime startChart = LocalDate.parse(fromDate, formatter).atStartOfDay();
+        LocalDateTime endChart = LocalDate.parse(toDate, formatter).atTime(LocalTime.MAX);
+
+        List<Object[]> rawData = orderRepository.getRevenueByDateRange(startChart, endChart);
+
+        // Chuyển List Object[] thành Map để dễ tra cứu
         Map<String, Double> revenueMap = rawData.stream().collect(Collectors.toMap(
-                row -> row[0].toString(),               // yyyy-MM-dd
+                row -> row[0].toString(),
                 row -> Double.parseDouble(row[1].toString())
         ));
 
-        // =======================
-        // 4. LẤP ĐẦY NGÀY TRỐNG
-        // =======================
+        // Tạo danh sách đầy đủ các ngày (kể cả ngày không có doanh thu -> điền 0)
         List<DashboardDTO.ChartDataDTO> chartData = new ArrayList<>();
-
-        LocalDate current = start.toLocalDate();
-        LocalDate last = end.toLocalDate();
-
+        LocalDate current = startChart.toLocalDate();
+        LocalDate last = endChart.toLocalDate();
         DateTimeFormatter displayFormat = DateTimeFormatter.ofPattern("dd/MM");
 
         while (!current.isAfter(last)) {
+            String dbKey = current.format(formatter);       // yyyy-MM-dd (Key trong Map)
+            String label = current.format(displayFormat);   // dd/MM (Hiển thị biểu đồ)
 
-            String dbKey = current.format(formatter);       // yyyy-MM-dd
-            String label = current.format(displayFormat);   // dd/MM
-
-            chartData.add(
-                    new DashboardDTO.ChartDataDTO(
-                            label,
-                            revenueMap.getOrDefault(dbKey, 0.0)
-                    )
-            );
+            chartData.add(new DashboardDTO.ChartDataDTO(
+                    label,
+                    revenueMap.getOrDefault(dbKey, 0.0)
+            ));
 
             current = current.plusDays(1);
         }
