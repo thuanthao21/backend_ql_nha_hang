@@ -1,11 +1,10 @@
 package com.dineflow.backend.controller;
 
-import com.dineflow.backend.entity.Role;
-import com.dineflow.backend.entity.User;
-import com.dineflow.backend.repository.UserRepository;
+import com.dineflow.backend.dto.UserDTO;
+import com.dineflow.backend.dto.UserRequest;
+import com.dineflow.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,38 +14,49 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UserController {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final UserService userService;
 
-    // 1. Lấy danh sách nhân viên (Chỉ Admin được xem)
     @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        return ResponseEntity.ok(userRepository.findAll());
+    public ResponseEntity<List<UserDTO>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
     }
 
-    // 2. Tạo nhân viên mới
     @PostMapping
-    public ResponseEntity<?> createUser(@RequestBody User user) {
-        if (userRepository.existsByUsername(user.getUsername())) {
-            return ResponseEntity.badRequest().body("Tên đăng nhập đã tồn tại!");
+    public ResponseEntity<?> createUser(@RequestBody UserRequest request) {
+        try {
+            return ResponseEntity.ok(userService.createUser(request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-
-        // Mặc định pass là 123456 nếu không nhập, hoặc lấy pass từ request
-        String rawPassword = (user.getPassword() == null || user.getPassword().isEmpty()) ? "123456" : user.getPassword();
-        user.setPassword(passwordEncoder.encode(rawPassword));
-
-        // Mặc định role là STAFF nếu không chọn
-        if (user.getRole() == null) {
-            user.setRole(Role.STAFF);
-        }
-
-        return ResponseEntity.ok(userRepository.save(user));
     }
 
-    // 3. Xóa nhân viên
+    @PutMapping("/{id}")
+    public ResponseEntity<UserDTO> updateUser(@PathVariable Integer id, @RequestBody UserRequest request) {
+        return ResponseEntity.ok(userService.updateUser(id, request));
+    }
+
+    // API Khóa/Mở khóa
+    @PatchMapping("/{id}/toggle-status")
+    public ResponseEntity<String> toggleStatus(@PathVariable Integer id) {
+        userService.toggleUserStatus(id);
+        return ResponseEntity.ok("Đã thay đổi trạng thái!");
+    }
+
+    // API Reset mật khẩu
+    @PatchMapping("/{id}/reset-password")
+    public ResponseEntity<String> resetPassword(@PathVariable Integer id) {
+        userService.resetPassword(id);
+        return ResponseEntity.ok("Đã reset mật khẩu về 123456!");
+    }
+
+    // [MỚI] API Xóa vĩnh viễn
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable Integer id) {
-        userRepository.deleteById(id);
-        return ResponseEntity.ok("Đã xóa nhân viên!");
+        try {
+            userService.deleteUserPermanently(id);
+            return ResponseEntity.ok("Đã xóa vĩnh viễn nhân viên!");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }
