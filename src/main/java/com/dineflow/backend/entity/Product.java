@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.math.BigDecimal;
+import jakarta.persistence.Column;
 
 @Entity
 @Table(name = "products")
@@ -36,4 +37,7 @@ public class Product {
     @JoinColumn(name = "category_id")
     @JsonIgnoreProperties({"products", "hibernateLazyInitializer", "handler", "parentCategory"})
     private Category category;
+
+    @Column(name = "is_available")
+    private Boolean isAvailable = true;
 }

@@ -1,7 +1,9 @@
 package com.dineflow.backend.repository;
 
 import com.dineflow.backend.entity.Order;
+import com.dineflow.backend.entity.OrderStatus; // <--- Import Enum OrderStatus
 import com.dineflow.backend.entity.RestaurantTable;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,55 +16,52 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Integer> {
 
-    // =======================
-    // 1. CÁC HÀM LOGIC CŨ (GIỮ NGUYÊN ĐỂ KHÔNG LỖI APP)
-    // =======================
+    // =======================================================
+    // 1. CÁC HÀM CƠ BẢN (Đã chuyển từ String -> OrderStatus)
+    // =======================================================
 
-    List<Order> findByStatusIn(List<String> statuses);
+    // [MỚI] Tìm danh sách đơn theo trạng thái + Sắp xếp cũ nhất lên đầu (Dùng cho Kitchen Controller)
+    List<Order> findByStatusInOrderByCreatedAtAsc(List<OrderStatus> statuses);
 
-    Optional<Order> findByTableAndStatus(RestaurantTable table, String status);
+    // [FIX] Tìm đơn theo danh sách trạng thái (Đổi String -> OrderStatus)
+    List<Order> findByStatusIn(List<OrderStatus> statuses);
 
-    Optional<Order> findByTableAndStatusIn(RestaurantTable table, List<String> statuses);
+    // [FIX] Tìm đơn theo bàn và trạng thái (Dùng cho Service - Đổi String -> OrderStatus)
+    // Lưu ý: Tên hàm là StatusInAndTable thì tham số phải là (List Status, Table)
+    Optional<Order> findByStatusInAndTable(List<OrderStatus> statuses, RestaurantTable table);
 
-    // Tìm đơn đang ăn (chưa thanh toán) của bàn
-    // Logic: Bàn này có đơn nào KHÁC 'COMPLETED' và KHÁC 'CANCELLED' không?
-    @Query("SELECT o FROM Order o WHERE o.table.id = :tableId AND o.status <> 'COMPLETED' AND o.status <> 'CANCELLED'")
+    // Tìm ngược lại (Nếu code cũ có dùng Table trước)
+    Optional<Order> findByTableAndStatusIn(RestaurantTable table, List<OrderStatus> statuses);
+
+
+    // =======================================================
+    // 2. CÁC HÀM QUERY TÙY CHỈNH (Reports & Dashboard)
+    // =======================================================
+
+    // Tìm đơn active bằng ID bàn (JPQL)
+    // Lưu ý: Sửa so sánh 'COMPLETED' thành Enum
+    @Query("SELECT o FROM Order o WHERE o.table.id = :tableId AND o.status <> com.dineflow.backend.entity.OrderStatus.COMPLETED AND o.status <> com.dineflow.backend.entity.OrderStatus.CANCELLED")
     Order findActiveOrderByTableId(@Param("tableId") Integer tableId);
 
-    // =======================
-    // 2. QUERY BÁO CÁO MỚI (FIX TIMEZONE HEROKU)
-    // Dùng: created_at và status = 'COMPLETED'
-    // =======================
+    // --- BÁO CÁO DOANH THU (Native Query - SQL thuần) ---
+    // (Giữ nguyên nativeQuery vì SQL so sánh chuỗi trong Database vẫn đúng)
 
-    /**
-     * Tính tổng tiền theo khoảng thời gian (Start -> End)
-     * Dùng cho Dashboard hôm nay hoặc Custom Range
-     */
     @Query(value = """
         SELECT COALESCE(SUM(total_amount), 0) 
         FROM orders 
         WHERE created_at >= :startDate AND created_at <= :endDate 
         AND status = 'COMPLETED'
     """, nativeQuery = true)
-    Double calculateRevenue(@Param("startDate") LocalDateTime startDate,
-                            @Param("endDate") LocalDateTime endDate);
+    Double calculateRevenue(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    /**
-     * Đếm số đơn hàng theo khoảng thời gian
-     */
     @Query(value = """
         SELECT COUNT(*) 
         FROM orders 
         WHERE created_at >= :startDate AND created_at <= :endDate
         AND status = 'COMPLETED'
     """, nativeQuery = true)
-    Integer countOrders(@Param("startDate") LocalDateTime startDate,
-                        @Param("endDate") LocalDateTime endDate);
+    Integer countOrders(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    /**
-     * Lấy dữ liệu vẽ biểu đồ cột
-     * Group by ngày (YYYY-MM-DD)
-     */
     @Query(value = """
         SELECT TO_CHAR(created_at, 'YYYY-MM-DD') as date_str, 
                COALESCE(SUM(total_amount), 0) as total 
@@ -72,18 +71,21 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
         GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD') 
         ORDER BY date_str ASC
     """, nativeQuery = true)
-    List<Object[]> getRevenueByDateRange(@Param("startDate") LocalDateTime startDate,
-                                         @Param("endDate") LocalDateTime endDate);
+    List<Object[]> getRevenueByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    // =======================
-    // 3. QUERY CŨ (BACKUP - CÓ THỂ GIỮ LẠI HOẶC KHÔNG)
-    // Các hàm này dùng CURRENT_DATE của SQL (sẽ bị lệch múi giờ trên Heroku)
-    // ReportService mới đã chuyển sang dùng 3 hàm ở mục 2 bên trên rồi.
-    // =======================
-
-    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status = 'COMPLETED' AND DATE(created_at) = CURRENT_DATE", nativeQuery = true)
-    Double getTodayRevenue();
-
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE status = 'COMPLETED' AND DATE(created_at) = CURRENT_DATE", nativeQuery = true)
-    Integer countTodayOrders();
+    // --- TOP 5 MÓN BÁN CHẠY (JPQL) ---
+    // Sửa so sánh status = 'COMPLETED' thành status = Enum
+    @Query("SELECT i.product.name, " +
+            "SUM(i.quantity), " +
+            "SUM(i.quantity * i.priceAtPurchase) " +
+            "FROM OrderItem i " +
+            "WHERE i.order.createdAt >= :startDate AND i.order.createdAt <= :endDate " +
+            "AND i.order.status = com.dineflow.backend.entity.OrderStatus.COMPLETED " +
+            "GROUP BY i.product.name " +
+            "ORDER BY SUM(i.quantity) DESC")
+    List<Object[]> getTopSellingProducts(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable
+    );
 }

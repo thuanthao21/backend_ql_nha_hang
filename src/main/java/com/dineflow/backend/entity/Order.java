@@ -26,9 +26,11 @@ public class Order {
     @Column(name = "total_amount")
     private BigDecimal totalAmount;
 
+//    @Column(name = "status", length = 20)
+//    private String status = "PENDING"; // PENDING, COMPLETED, CANCELLED
+    @Enumerated(EnumType.STRING) // Lưu vào database dưới dạng chữ (ví dụ: "PENDING")
     @Column(name = "status", length = 20)
-    private String status = "PENDING"; // PENDING, COMPLETED, CANCELLED
-
+    private OrderStatus status = OrderStatus.PENDING;
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now(); // Tự động lấy giờ hiện tại
 

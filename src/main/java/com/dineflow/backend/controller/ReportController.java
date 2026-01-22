@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/reports")
@@ -19,37 +18,38 @@ public class ReportController {
 
     private final ReportService reportService;
 
-    @GetMapping("/dashboard")
-    public ResponseEntity<?> getDashboardStats(
-            @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to
-    ) {
-        // Logic mặc định 7 ngày nếu không truyền tham số
+    // Helper: Xử lý ngày mặc định
+    private String[] validateDates(String from, String to) {
         if (from == null || from.isEmpty() || to == null || to.isEmpty()) {
             LocalDate today = LocalDate.now();
             LocalDate sevenDaysAgo = today.minusDays(6);
-            from = sevenDaysAgo.toString();
-            to = today.toString();
+            return new String[]{sevenDaysAgo.toString(), today.toString()};
         }
-
-        // Validate ngày (đổi chỗ nếu user nhập ngược)
         if (LocalDate.parse(from).isAfter(LocalDate.parse(to))) {
-            String temp = from;
-            from = to;
-            to = temp;
+            return new String[]{to, from}; // Đảo ngược
         }
+        return new String[]{from, to};
+    }
 
-        // --- SỬA LỖI TẠI ĐÂY ---
+    // API Dashboard
+    @GetMapping("/dashboard")
+    public ResponseEntity<?> getDashboardStats(@RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+        String[] dates = validateDates(from, to);
         return ResponseEntity.ok()
-                // 1. Chuẩn HTTP 1.1 (Hiện đại)
                 .cacheControl(CacheControl.noStore().mustRevalidate())
-
-                // 2. Chuẩn HTTP 1.0 (Cũ nhưng cần thiết cho trình duyệt cũ)
                 .header("Pragma", "no-cache")
-
-                // 3. Ép hết hạn ngay lập tức
                 .header("Expires", "0")
+                .body(reportService.getDashboardStats(dates[0], dates[1]));
+    }
 
-                .body(reportService.getDashboardStats(from, to));
+    // [MỚI] API Top Products
+    @GetMapping("/top-products")
+    public ResponseEntity<?> getTopProducts(@RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+        String[] dates = validateDates(from, to);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore().mustRevalidate())
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .body(reportService.getTopProducts(dates[0], dates[1]));
     }
 }

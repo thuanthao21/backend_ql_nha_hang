@@ -12,7 +12,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
-
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -31,13 +30,22 @@ public class SecurityConfig {
                         // 1. Cho phép tất cả các request OPTIONS (Fix lỗi CORS Preflight)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 2. Mở toang các đường dẫn liên quan đến xác thực và websocket
-                        // Dùng String trực tiếp để Spring tự chọn Matcher phù hợp nhất
+                        // 2. Mở toang các đường dẫn Public (Login, Socket, Ảnh...)
                         .requestMatchers("/auth/**", "/api/auth/**", "/ws/**", "/login/**").permitAll()
 
-                        // 3. Phân quyền API chức năng
-                        .requestMatchers("/api/orders/**", "/api/tables/**", "/api/products/**",
-                                "/api/categories/**", "/api/reports/**").hasAnyAuthority("ADMIN", "STAFF")
+                        // =================================================================
+                        // 3. PHÂN QUYỀN CHỨC NĂNG (ĐÃ SỬA)
+                        // =================================================================
+
+                        // [QUAN TRỌNG] Bếp cần quyền vào: Đơn hàng (để nấu), Bàn (để xem tên bàn), Sản phẩm (để xem tên món)
+                        .requestMatchers("/api/orders/**", "/api/tables/**", "/api/products/**")
+                        .hasAnyAuthority("ADMIN", "STAFF", "KITCHEN") // <--- THÊM "KITCHEN" VÀO ĐÂY
+
+                        // Các mục quản lý khác (Danh mục, Báo cáo) -> Bếp không cần vào
+                        .requestMatchers("/api/categories/**", "/api/reports/**")
+                        .hasAnyAuthority("ADMIN", "STAFF")
+
+                        // Quản lý nhân viên -> Chỉ Admin
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
 
                         // 4. Tất cả các request còn lại phải đăng nhập
@@ -48,4 +56,5 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-    }}
+    }
+}

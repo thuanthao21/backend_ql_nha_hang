@@ -21,21 +21,22 @@ public class ProductController {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
 
-    // 1. GET: Lấy danh sách (Trả về DTO)
+    // 1. GET: Lấy danh sách
     @GetMapping
     public ResponseEntity<List<ProductDTO>> getAllProducts() {
         List<Product> products = productRepository.findAll();
-        // Convert List<Entity> -> List<DTO>
         List<ProductDTO> dtos = products.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(dtos);
     }
 
-    // 2. POST: Thêm món mới (Nhận DTO, Validate)
+    // 2. POST: Thêm món mới
     @PostMapping
     public ResponseEntity<?> createProduct(@Valid @RequestBody ProductDTO productDTO) {
         Product product = convertToEntity(productDTO);
+        // Mặc định món mới là có hàng
+        product.setIsAvailable(true);
         Product savedProduct = productRepository.save(product);
         return ResponseEntity.ok(convertToDTO(savedProduct));
     }
@@ -46,13 +47,15 @@ public class ProductController {
         Product existingProduct = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Món ăn không tồn tại!"));
 
-        // Cập nhật thông tin
         existingProduct.setName(productDTO.getName());
         existingProduct.setPrice(productDTO.getPrice());
         existingProduct.setImageUrl(productDTO.getImageUrl());
         existingProduct.setKitchenStation(productDTO.getKitchenStation());
+        // Cho phép cập nhật trạng thái từ form sửa (nếu cần)
+        if(productDTO.getIsAvailable() != null) {
+            existingProduct.setIsAvailable(productDTO.getIsAvailable());
+        }
 
-        // Cập nhật danh mục (nếu có)
         if (productDTO.getCategoryId() != null) {
             Category category = categoryRepository.findById(productDTO.getCategoryId())
                     .orElseThrow(() -> new RuntimeException("Danh mục không tồn tại"));
@@ -61,6 +64,20 @@ public class ProductController {
 
         Product savedProduct = productRepository.save(existingProduct);
         return ResponseEntity.ok(convertToDTO(savedProduct));
+    }
+
+    // [MỚI] API 3.1: Đổi nhanh trạng thái Còn hàng / Hết hàng
+    @PutMapping("/{id}/availability")
+    public ResponseEntity<?> toggleAvailability(@PathVariable Integer id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Món không tồn tại"));
+
+        // Đảo ngược trạng thái hiện tại (True -> False, False -> True)
+        boolean currentStatus = product.getIsAvailable() != null ? product.getIsAvailable() : true;
+        product.setIsAvailable(!currentStatus);
+
+        productRepository.save(product);
+        return ResponseEntity.ok(convertToDTO(product));
     }
 
     // 4. DELETE: Xóa món
@@ -73,8 +90,7 @@ public class ProductController {
         return ResponseEntity.ok("Đã xóa thành công!");
     }
 
-    // --- HELPER METHODS (Mapping thủ công) ---
-    // Sau này đi làm em sẽ dùng thư viện MapStruct, còn giờ viết tay để hiểu bản chất
+    // --- HELPER METHODS ---
 
     private ProductDTO convertToDTO(Product product) {
         ProductDTO dto = new ProductDTO();
@@ -83,6 +99,8 @@ public class ProductController {
         dto.setPrice(product.getPrice());
         dto.setImageUrl(product.getImageUrl());
         dto.setKitchenStation(product.getKitchenStation());
+        // [QUAN TRỌNG] Phải trả về trạng thái để Frontend biết
+        dto.setIsAvailable(product.getIsAvailable());
 
         if (product.getCategory() != null) {
             dto.setCategoryId(product.getCategory().getId());
@@ -97,6 +115,8 @@ public class ProductController {
         product.setPrice(dto.getPrice());
         product.setImageUrl(dto.getImageUrl());
         product.setKitchenStation(dto.getKitchenStation());
+        // Map trạng thái nếu có
+        product.setIsAvailable(dto.getIsAvailable());
 
         if (dto.getCategoryId() != null) {
             Category category = categoryRepository.findById(dto.getCategoryId())

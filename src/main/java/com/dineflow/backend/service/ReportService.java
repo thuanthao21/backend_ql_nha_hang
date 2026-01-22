@@ -3,6 +3,8 @@ package com.dineflow.backend.service;
 import com.dineflow.backend.dto.DashboardDTO;
 import com.dineflow.backend.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest; // 👈 Import PageRequest
+import org.springframework.data.domain.Pageable;   // 👈 Import Pageable
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -21,45 +23,42 @@ public class ReportService {
 
     private final OrderRepository orderRepository;
 
+    // --- HÀM 1: DASHBOARD ---
     public DashboardDTO getDashboardStats(String fromDate, String toDate) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-        // 1. XỬ LÝ MÚI GIỜ (QUAN TRỌNG TRÊN HEROKU)
-        // Heroku chạy UTC, ta phải ép về giờ Việt Nam để tính "Hôm nay"
+        // 1. XỬ LÝ MÚI GIỜ
         ZoneId vnZone = ZoneId.of("Asia/Ho_Chi_Minh");
         LocalDate todayVN = LocalDate.now(vnZone);
 
-        // Bắt đầu ngày hôm nay: 00:00:00 (Giờ VN)
         LocalDateTime startToday = todayVN.atStartOfDay();
-        // Kết thúc ngày hôm nay: 23:59:59.9999 (Giờ VN)
         LocalDateTime endToday = todayVN.atTime(LocalTime.MAX);
 
-        // Gọi Repo với thời gian chính xác
         Double todayRev = orderRepository.calculateRevenue(startToday, endToday);
         Integer todayOrd = orderRepository.countOrders(startToday, endToday);
 
-        // 2. XỬ LÝ BIỂU ĐỒ (CHART)
-        // Parse ngày từ request (Front gửi lên yyyy-MM-dd)
+        if (todayRev == null) todayRev = 0.0;
+        if (todayOrd == null) todayOrd = 0;
+
+        // 2. XỬ LÝ BIỂU ĐỒ
         LocalDateTime startChart = LocalDate.parse(fromDate, formatter).atStartOfDay();
         LocalDateTime endChart = LocalDate.parse(toDate, formatter).atTime(LocalTime.MAX);
 
         List<Object[]> rawData = orderRepository.getRevenueByDateRange(startChart, endChart);
 
-        // Chuyển List Object[] thành Map để dễ tra cứu
         Map<String, Double> revenueMap = rawData.stream().collect(Collectors.toMap(
                 row -> row[0].toString(),
                 row -> Double.parseDouble(row[1].toString())
         ));
 
-        // Tạo danh sách đầy đủ các ngày (kể cả ngày không có doanh thu -> điền 0)
         List<DashboardDTO.ChartDataDTO> chartData = new ArrayList<>();
         LocalDate current = startChart.toLocalDate();
         LocalDate last = endChart.toLocalDate();
         DateTimeFormatter displayFormat = DateTimeFormatter.ofPattern("dd/MM");
 
         while (!current.isAfter(last)) {
-            String dbKey = current.format(formatter);       // yyyy-MM-dd (Key trong Map)
-            String label = current.format(displayFormat);   // dd/MM (Hiển thị biểu đồ)
+            String dbKey = current.format(formatter);
+            String label = current.format(displayFormat);
 
             chartData.add(new DashboardDTO.ChartDataDTO(
                     label,
@@ -71,4 +70,26 @@ public class ReportService {
 
         return new DashboardDTO(todayRev, todayOrd, chartData);
     }
+
+    // --- HÀM 2: TOP SẢN PHẨM (MỚI THÊM) ---
+    public List<TopProductDTO> getTopProducts(String fromDate, String toDate) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime start = LocalDate.parse(fromDate, formatter).atStartOfDay();
+        LocalDateTime end = LocalDate.parse(toDate, formatter).atTime(LocalTime.MAX);
+
+        // Tạo Pageable để lấy 5 dòng đầu tiên
+        Pageable topFive = PageRequest.of(0, 5);
+
+        List<Object[]> rawData = orderRepository.getTopSellingProducts(start, end, topFive);
+
+        // Convert Object[] -> DTO
+        return rawData.stream().map(row -> new TopProductDTO(
+                (String) row[0],                        // Tên món
+                Long.parseLong(row[1].toString()),      // Số lượng
+                Double.parseDouble(row[2].toString())   // Doanh thu
+        )).collect(Collectors.toList());
+    }
+
+    // DTO nội bộ
+    public record TopProductDTO(String name, Long quantity, Double revenue) {}
 }

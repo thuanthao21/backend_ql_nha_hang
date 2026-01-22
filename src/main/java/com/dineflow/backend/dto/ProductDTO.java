@@ -28,4 +28,6 @@ public class ProductDTO {
 
     // Khi trả về, có thể kèm thêm tên danh mục cho tiện hiển thị
     private String categoryName;
+
+    private Boolean isAvailable;
 }

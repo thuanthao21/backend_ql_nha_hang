@@ -1,6 +1,6 @@
 package com.dineflow.backend.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnore; // ✅ QUAN TRỌNG: Chống lỗi vòng lặp
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -18,9 +18,8 @@ public class OrderItem {
     private Integer id;
 
     @ManyToOne
-
     @JoinColumn(name = "order_id")
-    @JsonIgnore
+    @JsonIgnore // ✅ Dòng này giúp sửa lỗi 400 Bad Request khi lấy API /current
     private Order order;
 
     @ManyToOne
@@ -31,11 +30,12 @@ public class OrderItem {
     private Integer quantity;
 
     @Column(name = "price_at_purchase")
-    private BigDecimal priceAtPurchase; // Giá bán lúc order (Quan trọng!)
+    private BigDecimal priceAtPurchase;
 
     @Column(name = "note")
-    private String note; // Ví dụ: Ít đá, nhiều sữa
+    private String note;
 
+    // ✅ Giữ là String để dễ lưu các trạng thái: PENDING, COOKING, READY, SERVED
     @Column(name = "status", length = 20)
-    private String status = "PENDING"; // PENDING, COOKING, SERVED
+    private String status = "PENDING";
 }
