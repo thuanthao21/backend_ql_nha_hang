@@ -27,28 +27,43 @@ public class SecurityConfig {
                 .csrf(org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Cho phép tất cả các request OPTIONS (Fix lỗi CORS Preflight)
+                        // 1. Fix lỗi CORS
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 2. Mở toang các đường dẫn Public (Login, Socket, Ảnh...)
+                        // 2. Mở các đường dẫn Public cơ bản
                         .requestMatchers("/auth/**", "/api/auth/**", "/ws/**", "/login/**").permitAll()
 
                         // =================================================================
-                        // 3. PHÂN QUYỀN CHỨC NĂNG (ĐÃ SỬA)
+                        // [FIX QUAN TRỌNG] CHO PHÉP KHÁCH HÀNG XEM MENU
+                        // =================================================================
+                        // Cho phép TẤT CẢ mọi người (bao gồm khách chưa đăng nhập) được phép XEM (GET) danh sách:
+                        // - Món ăn (products)
+                        // - Danh mục (categories)
+                        // - Thông tin bàn (tables - để check bàn trống/có người)
+                        .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/categories/**", "/api/tables/**").permitAll()
+
+                        // =================================================================
+                        // 3. PHÂN QUYỀN CHỨC NĂNG QUẢN LÝ (Cần đăng nhập)
                         // =================================================================
 
-                        // [QUAN TRỌNG] Bếp cần quyền vào: Đơn hàng (để nấu), Bàn (để xem tên bàn), Sản phẩm (để xem tên món)
-                        .requestMatchers("/api/orders/**", "/api/tables/**", "/api/products/**")
-                        .hasAnyAuthority("ADMIN", "STAFF", "KITCHEN") // <--- THÊM "KITCHEN" VÀO ĐÂY
+                        // Các thao tác THAY ĐỔI dữ liệu (POST, PUT, DELETE) trên Products, Tables thì mới cần quyền
+                        .requestMatchers("/api/products/**", "/api/tables/**")
+                        .hasAnyAuthority("ADMIN", "STAFF", "KITCHEN")
 
-                        // Các mục quản lý khác (Danh mục, Báo cáo) -> Bếp không cần vào
+                        // Đơn hàng (Orders):
+                        // Lưu ý: Nếu khách hàng tự bấm nút "Đặt món" (Tạo đơn), bạn cũng cần mở POST /api/orders/create cho public
+                        // hoặc dùng logic riêng. Đoạn dưới đây áp dụng cho quản lý đơn hàng.
+                        .requestMatchers("/api/orders/**")
+                        .hasAnyAuthority("ADMIN", "STAFF", "KITCHEN")
+
+                        // Các mục quản lý khác
                         .requestMatchers("/api/categories/**", "/api/reports/**")
                         .hasAnyAuthority("ADMIN", "STAFF")
 
-                        // Quản lý nhân viên -> Chỉ Admin
+                        // Quản lý nhân viên
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
 
-                        // 4. Tất cả các request còn lại phải đăng nhập
+                        // 4. Còn lại bắt buộc đăng nhập
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
